@@ -1,0 +1,6 @@
+# hub-desk (Windows). Versions this build was tested with (2026-11-25, Python 3.15.2).
+pywinpty==3.1.2
+starlette==1.10.0
+uvicorn==0.54.0
+mcp==2.3.0
+pytest==9.2.0

@@ -1,0 +1,38 @@
+# Model catalog. Only ids listed here can be chosen.
+# verified = true only after a real launch confirmed the id (record date + CLI version).
+default_effort = "medium"
+
+[cli.claude]
+command = "claude"
+model_flag = "--model"          # claude --help (2.1.319): alias or full name
+effort_flag = "--effort"        # claude --help: low, medium, high, xhigh, max
+efforts = ["low", "medium", "high", "xhigh", "max"]
+# Claude transcripts carry token usage but not the window size: per-model values below are assumptions
+# (2026-11-14: an Opus 5.5 session held 206.8k tokens, so its window is > 200k). Edit if your plan differs.
+context_window = 200000
+models = [
+  { id = "claude-opus-5-5", context_window = 1000000,   label = "Opus 5.5",   verified = true },  # 2026-11-25 claude 2.1.332, hub-desk
+  { id = "claude-fable-5-2", context_window = 1000000,  label = "Fable 5.2",  verified = true },  # 2026-11-25 claude 2.1.332, hub-desk
+  { id = "claude-sonnet-5-5", context_window = 1000000, label = "Sonnet 5.5", verified = true },  # 2026-11-25 claude 2.1.332, hub-desk
+  { id = "claude-haiku-5-5",  label = "Haiku 5.5",  verified = true },  # 2026-11-12 claude 2.1.319, M4 worker
+]
+
+[cli.codex]
+command = "codex"
+model_flag = "-m"                              # codex --help (0.167.0)
+effort_config = "model_reasoning_effort"       # passed as -c key="value"
+# ids, windows and efforts from ~/.codex/models_cache.json (fetched 2026-11-25, codex 0.172.0), models with
+# visibility "list". Every listed model takes low..max; "ultra" exists on all but Luna and is left out because
+# efforts are per CLI here, not per model.
+efforts = ["low", "medium", "high", "xhigh", "max"]
+# codex reports its own window (model_context_window) in the session rollout; this is the fallback.
+context_window = 272000
+models = [
+  { id = "gpt-6.2-sol",   context_window = 500000, label = "Sol 6.2",   verified = true },  # 2026-11-25 codex 0.172.0, hub-desk
+  { id = "gpt-6.2-astra", context_window = 272000, label = "Astra 6.2", verified = true },  # 2026-11-25 codex 0.172.0, hub-desk
+  { id = "gpt-6.1-sol",   context_window = 500000, label = "Sol 6.1",   verified = true },  # 2026-11-12 codex 0.167.0, M4 worker
+  { id = "gpt-6.1-terra", context_window = 500000, label = "Terra 6.1", verified = true },  # 2026-11-25 codex 0.172.0, hub-desk
+  { id = "gpt-6-astra",   context_window = 272000, label = "Astra 6",   verified = true },  # 2026-11-25 codex 0.172.0, hub-desk
+  { id = "gpt-6-sol",     context_window = 272000, label = "Sol 6",     verified = true },  # 2026-11-25 codex 0.172.0, hub-desk
+  { id = "gpt-6-luna",    context_window = 272000, label = "Luna 6",    verified = true },  # 2026-11-25 codex 0.172.0, hub-desk
+]

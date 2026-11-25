@@ -1,0 +1,13 @@
+# this PC only: virtual environment, run records (session ids, folder paths, git copies), test folders, builds
+.venv/
+state/
+dist/
+sandbox/
+sandbox-git/
+.claude/
+__pycache__/
+*.pyc
+.pytest_cache/
+# development notes with local paths
+PLAN.md
+STATUS.md

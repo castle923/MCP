@@ -1,0 +1,29 @@
+# Team for `mods [N]` (= agent-hub mods [N]): main 1 + N sub agents (default_subs when N is omitted).
+#   N = 1 -> builder
+#   N >= 2 -> reviewer 1 + builders (builder, builder2, builder3, ...)
+# CLIs are fixed per job. Model and effort are picked by number keys inside each pane (Enter = value below).
+default_subs = 2
+max_workers = 6     # live subs at once (mods and hub_assign together)
+
+[main]
+role = "main"
+cli = "codex"
+model = "gpt-6.1-sol"
+effort = "medium"
+
+[builder]
+role = "builder"
+cli = "claude"
+model = "claude-opus-5-5"
+effort = "medium"
+
+[reviewer]
+role = "reviewer"
+cli = "claude"
+model = "claude-opus-5-5"
+effort = "medium"
+
+# Job text appended to each sub's instructions.
+[jobs]
+builder = "Your job: builder. Implement the tasks main assigns: edit code and run the relevant tests. Finish each task with complete_task listing changed files and test results."
+reviewer = "Your job: reviewer. Review the changes named in your task: read the diff/files, run checks, and report findings as 'severity file:line problem' with complete_task. Do not edit files unless the task says so."

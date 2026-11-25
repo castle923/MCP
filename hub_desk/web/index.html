@@ -1,0 +1,215 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="hub-token" content="__TOKEN__">
+<title>hub-desk</title>
+<link rel="icon" href="hub-desk-256.png" type="image/png">
+<link rel="stylesheet" href="vendor/xterm.css">
+<link rel="stylesheet" href="app.css">
+</head>
+<body>
+<header class="bar">
+  <svg class="mark" viewBox="0 0 16 16" width="22" height="22" aria-hidden="true" shape-rendering="crispEdges">
+    <rect x="2" y="2" width="12" height="8" fill="currentColor"/><rect x="4" y="4" width="8" height="4" fill="#14161a"/>
+    <rect x="5" y="5" width="3" height="1" fill="currentColor"/><rect x="7" y="10" width="2" height="2" fill="currentColor"/>
+    <rect x="1" y="12" width="14" height="2" fill="currentColor"/>
+  </svg>
+  <h1 class="brand">hub-desk</h1>
+  <span id="bar-project" class="bar-project" hidden></span>
+  <span id="bar-phase" class="bar-phase">팀 구성</span>
+  <div id="bar-run" class="bar-run" hidden>
+    <span id="bar-ws" class="bar-ws"></span>
+    <span id="bar-lock" class="lock">
+      <svg viewBox="0 0 12 12" width="12" height="12" aria-hidden="true" shape-rendering="crispEdges"><rect x="2" y="5" width="8" height="6" fill="currentColor"/><rect x="3" y="1" width="1" height="4" fill="currentColor"/><rect x="8" y="1" width="1" height="4" fill="currentColor"/><rect x="4" y="1" width="4" height="1" fill="currentColor"/></svg>
+      <span id="bar-lock-text">설정 고정됨</span>
+    </span>
+    <span id="bar-harness" class="lock quiet" hidden></span>
+    <span id="bar-extras" class="lock quiet" hidden></span>
+    <span id="bar-conn" class="conn" role="status"></span>
+    <button id="bar-board" type="button" class="btn boardbtn" aria-haspopup="dialog">게시판 <span class="n">0</span><span class="pip" aria-hidden="true"></span></button>
+    <button id="bar-changes" type="button" class="btn boardbtn" aria-haspopup="dialog" hidden>변경 <span class="n">0</span></button>
+    <button id="bar-alert" type="button" class="btn alert" hidden></button>
+    <button id="btn-stop" type="button" class="btn danger">정지</button>
+  </div>
+  <button id="bar-runs" type="button" class="btn" aria-haspopup="dialog">실행 기록</button>
+</header>
+
+<p id="boot" class="boot" role="status">불러오는 중…</p>
+
+<main id="setup" class="wiz" hidden>
+  <div class="wiz-main">
+    <nav aria-label="설정 단계"><ol id="steps" class="steps"></ol></nav>
+    <div id="wiz-body"></div>
+  </div>
+  <aside class="wiz-side" aria-label="사무실 미리보기">
+    <h2>사무실 미리보기</h2>
+    <div class="office-wrap"><canvas id="preview" class="office" role="img" aria-label="팀 구성 미리보기"></canvas></div>
+    <p id="preview-count" class="hint"></p>
+  </aside>
+</main>
+
+<main id="dash" class="dash" hidden>
+  <div class="rail">
+    <div class="tabs-row">
+      <div id="team-tabs" class="seg team-tabs" role="group" aria-label="팀 선택" hidden></div>
+      <button id="btn-addteam" type="button" class="btn small" aria-haspopup="dialog" aria-describedby="addteam-why">팀 추가</button>
+      <span id="addteam-why" class="hint" hidden></span>
+      <button id="btn-stopteam" type="button" class="btn small danger">팀 정지</button>
+      <button id="btn-motion" type="button" class="btn small" aria-pressed="true">애니메이션 켬</button>
+    </div>
+    <section class="office-wrap" aria-label="사무실">
+      <canvas id="office" class="office" role="img" aria-label="사무실 평면도"></canvas>
+    </section>
+    <section aria-labelledby="h-agents"><h2 id="h-agents">에이전트</h2><ul id="agents" class="agents"></ul></section>
+    <section aria-labelledby="h-tasks"><h2 id="h-tasks">작업</h2><div id="tasks" class="board"></div></section>
+    <section aria-labelledby="h-events"><h2 id="h-events">최근 이벤트</h2><ol id="events" class="events"></ol></section>
+  </div>
+  <section class="termpanel" aria-label="터미널">
+    <div class="termhead">
+      <h2 id="term-title">터미널</h2>
+      <span id="term-status" class="chip"></span>
+      <span id="term-hint" class="hint" role="status"></span>
+      <div class="seg" role="group" aria-label="터미널 보기">
+        <button type="button" id="view-single" aria-pressed="true">선택 보기</button>
+        <button type="button" id="view-grid" aria-pressed="false">전체 보기</button>
+      </div>
+    </div>
+    <div id="terms" class="terms single"></div>
+    <form id="composer" class="composer" aria-label="지시 입력">
+      <label class="sr-only" for="say-to">받는 에이전트</label>
+      <select id="say-to"></select>
+      <label class="sr-only" for="say-text">지시 내용</label>
+      <textarea id="say-text" rows="1" maxlength="20000" autocomplete="off" placeholder="지시를 입력하세요. Enter로 보내고 Shift+Enter로 줄을 바꿉니다."></textarea>
+      <button id="say-send" type="submit" class="btn primary">보내기</button>
+      <p id="say-status" class="say-status" role="status"></p>
+    </form>
+  </section>
+</main>
+
+<dialog id="stop-dialog" aria-labelledby="stop-title">
+  <form method="dialog">
+    <h2 id="stop-title">모든 에이전트를 정지할까요?</h2>
+    <p>실행 중인 CLI와 그것이 띄운 프로세스가 모두 종료되고, 진행 중이던 작업은 중단됩니다. 설정 화면으로 돌아가며, 지금 구성이 그대로 남아 있어 고친 뒤 다시 실행할 수 있습니다.</p>
+    <div class="actions">
+      <button value="cancel" class="btn" autofocus>계속 실행</button>
+      <button value="stop" class="btn danger">정지</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="board" class="board-dlg" aria-labelledby="board-title">
+  <div class="bb-frame">
+    <header class="bb-head">
+      <h2 id="board-title">게시판</h2>
+      <span id="bb-new" class="chip warn" role="status" hidden>새 게시물</span>
+      <div id="bb-teams" class="seg" role="group" aria-label="팀 고르기" hidden></div>
+      <span class="bb-gap"></span>
+      <button id="bb-big" type="button" class="btn small" aria-pressed="false">크게 보기</button>
+      <button id="bb-close" type="button" class="btn small">닫기</button>
+    </header>
+    <div class="bb-body">
+      <nav id="bb-posts" class="bb-list" aria-label="게시물 목록"></nav>
+      <section class="bb-view" aria-label="선택한 게시물">
+        <div id="bb-meta" class="bb-meta"></div>
+        <div id="bb-stage" class="bb-stage"></div>
+      </section>
+    </div>
+    <div class="bb-tray" aria-hidden="true"><i></i><i></i><i></i><b></b></div>
+  </div>
+</dialog>
+
+<dialog id="changes" class="chg-dlg" aria-labelledby="cg-title">
+  <header class="cg-head">
+    <h2 id="cg-title">변경 사항</h2>
+    <span id="cg-repo" class="hint"></span>
+    <button id="cg-close" type="button" class="btn small">닫기</button>
+  </header>
+  <div class="cg-body">
+    <nav id="cg-list" class="cg-list" aria-label="작업 사본 목록"></nav>
+    <section class="cg-view" aria-label="선택한 작업 사본">
+      <div id="cg-top" class="cg-top"></div>
+      <p id="cg-msg" role="status" hidden></p>
+      <ul id="cg-files" class="cg-files" aria-label="바뀐 파일"></ul>
+      <pre id="cg-diff" class="cg-diff" tabindex="0" aria-label="변경 내용"></pre>
+    </section>
+  </div>
+</dialog>
+
+<dialog id="runs" class="chg-dlg" aria-labelledby="rn-title">
+  <header class="cg-head">
+    <h2 id="rn-title">실행 기록</h2>
+    <span class="hint">지난 실행의 설정과 작업, 게시물을 보고 이어서 실행할 수 있습니다</span>
+    <button id="rn-close" type="button" class="btn small">닫기</button>
+  </header>
+  <div class="cg-body">
+    <nav class="cg-list" aria-label="실행 목록">
+      <label class="sr-only" for="rn-filter">기록 찾기</label>
+      <input id="rn-filter" type="search" placeholder="프로젝트나 폴더로 찾기" autocomplete="off" spellcheck="false">
+      <div id="rn-list"></div>
+    </nav>
+    <section class="cg-view rn-view" aria-label="선택한 실행">
+      <div id="rn-detail"></div>
+      <p id="rn-msg" class="cg-msg" role="status" hidden></p>
+      <div id="rn-posts"></div>
+      <div id="rn-postbox" hidden><div id="rn-stage" class="bb-stage rn-stage"></div></div>
+    </section>
+  </div>
+</dialog>
+
+<dialog id="cg-confirm" aria-labelledby="cgc-title">
+  <form method="dialog">
+    <h2 id="cgc-title"></h2>
+    <p id="cgc-text"></p>
+    <div class="actions">
+      <button value="cancel" class="btn" autofocus>취소</button>
+      <button id="cgc-ok" value="ok" class="btn primary"></button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="team-dlg" class="folder-dlg team-dlg" aria-labelledby="td-title">
+  <header class="fd-head">
+    <h2 id="td-title">팀 추가</h2>
+    <button id="td-close" type="button" class="btn small">닫기</button>
+  </header>
+  <p class="hint td-note">새 팀에도 이 실행의 프로젝트, 하네스, 추가 스킬, 도구 설정이 그대로 적용됩니다.</p>
+  <div id="td-body" class="fd-body"></div>
+  <footer class="fd-foot">
+    <p id="td-err" class="error" role="alert" hidden></p>
+    <span class="td-gap"></span>
+    <button id="td-cancel" type="button" class="btn">취소</button>
+    <button id="td-submit" type="button" class="btn primary">팀 추가</button>
+  </footer>
+</dialog>
+
+<dialog id="folder-dlg" class="folder-dlg" aria-labelledby="fd-title">
+  <header class="fd-head">
+    <h2 id="fd-title">작업 폴더 선택</h2>
+    <button id="fd-close" type="button" class="btn small">닫기</button>
+  </header>
+  <p class="hint">VS Code에서 열려 있거나 최근에 연 폴더, 이전에 실행한 폴더입니다. 고르면 에이전트가 그 폴더 안에서 일합니다.</p>
+  <label class="sr-only" for="fd-filter">폴더 찾기</label>
+  <input id="fd-filter" type="search" placeholder="이름이나 경로로 찾기" autocomplete="off" spellcheck="false">
+  <div id="fd-body" class="fd-body"></div>
+  <footer class="fd-foot">
+    <button id="fd-browse" type="button" class="btn">찾아보기… (Windows 폴더 창)</button>
+    <span class="hint">목록에 없으면 Windows 폴더 창에서 직접 고릅니다. 창이 이 화면 뒤에 열릴 수 있습니다.</span>
+  </footer>
+</dialog>
+
+<div id="note" class="note" role="status" hidden></div>
+
+<div id="toast" class="toast" role="status" hidden>
+  <button id="toast-open" type="button"></button>
+  <button id="toast-close" type="button" aria-label="알림 닫기">×</button>
+</div>
+
+<script src="vendor/xterm.js"></script>
+<script src="vendor/addon-fit.js"></script>
+<script src="mock.js"></script>
+<script src="office.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
