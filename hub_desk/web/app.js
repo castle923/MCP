@@ -725,6 +725,27 @@
 
   // ---------- rendering ----------
   function setConn(msg) { const el = $('#bar-conn'); if (el.textContent !== msg) el.textContent = msg; }
+  // "지우기" hides finished tasks and old events from this dashboard only (the board keeps them, and the run history
+  // still shows every task). Remembered per run in this browser.
+  const clearKey = (teamId) => `hub-desk.cleared.${D.state?.started_at || 0}.${teamId}`;
+  function cleared(teamId) {
+    try { return { tasks: [], events: 0, ...JSON.parse(localStorage.getItem(clearKey(teamId)) || '{}') }; }
+    catch { return { tasks: [], events: 0 }; }
+  }
+  function clearItems(teamId, what) {
+    const team = D.state?.teams.find((t) => t.id === teamId); if (!team) return;
+    const c = cleared(teamId);
+    if (what === 'events') c.events = Math.max(0, ...team.events.map((e) => e.seq));
+    else c.tasks = [...new Set([...c.tasks, ...team.tasks.filter((t) => t.status === what).map((t) => t.id)])];
+    try { localStorage.setItem(clearKey(teamId), JSON.stringify(c)); } catch { /* private mode: cleared for this page only */ }
+    D.sig = {}; render();
+  }
+  function keepScroll(id, fn) { // a rebuild must not jump a scrolled list back to the top
+    const pos = [...$(id).querySelectorAll('ul'), $(id)].map((el) => el.scrollTop);
+    fn();
+    [...$(id).querySelectorAll('ul'), $(id)].forEach((el, i) => { if (pos[i]) el.scrollTop = pos[i]; });
+  }
+
   function put(id, html) { // only touch the DOM when something changed, and keep keyboard focus across the rebuild
     if (D.sig[id] === html) return;
     const el = $(id), ae = document.activeElement, k = el.contains(ae) && (ae.dataset.key || ae.dataset.team);
@@ -781,17 +802,22 @@
     }).join(''));
 
     const cols = [['open', '대기'], ['in_progress', '진행'], ['done', '완료'], ['failed', '실패']];
-    put('#tasks', cols.map(([k, label]) => {
-      const list = team.tasks.filter((t) => t.status === k);
-      return `<div class="col col-${k}"><h3>${label} <span class="n">${list.length}</span></h3>${
+    const hidden = cleared(team.id);
+    keepScroll('#tasks', () => put('#tasks', cols.map(([k, label]) => {
+      const all = team.tasks.filter((t) => t.status === k), list = all.filter((t) => !hidden.tasks.includes(t.id)).reverse();
+      const clearable = (k === 'done' || k === 'failed') && list.length;
+      return `<div class="col col-${k}"><h3><span>${label} <span class="n">${list.length}</span></span>${clearable
+        ? `<button type="button" class="clr" data-clear="${k}" data-team="${esc(team.id)}" aria-label="${label} 목록 지우기">지우기</button>` : ''}</h3>${
         list.length ? `<ul>${list.map((t) => `<li title="${esc(t.id)}"><span class="obj">${esc(t.objective)}</span><small>${esc(nameIn(team, t.assignee))} · ${hhmmss(t.updated_at)}</small></li>`).join('')}</ul>`
-          : '<p class="empty">없음</p>'}</div>`;
-    }).join(''));
+          : `<p class="empty">${all.length ? '지운 항목만 있습니다' : '없음'}</p>`}</div>`;
+    }).join('')));
 
-    put('#events', team.events.length ? team.events.slice(-15).reverse().map((e) =>
+    const evs = team.events.filter((e) => e.seq > hidden.events);
+    $('#events-clear').hidden = !evs.length; $('#events-clear').dataset.team = team.id;
+    keepScroll('#events', () => put('#events', evs.length ? evs.slice(-40).reverse().map((e) =>
       (e.kind === 'say' ? `<li><time>${hhmmss(e.ts)}</time><b>나</b><span>→ ${esc(nameIn(team, e.data?.to || ''))}: ${esc(e.data?.subject ?? e.text ?? '')}</span></li>`
         : `<li><time>${hhmmss(e.ts)}</time><b>${esc(nameIn(team, e.role))}</b><span>${esc(e.kind)} ${esc(e.text)}</span></li>`)).join('')
-      : '<li class="empty">아직 이벤트가 없습니다.</li>');
+      : `<li class="empty">${team.events.length ? '지운 뒤 새 이벤트가 없습니다.' : '아직 이벤트가 없습니다.'}</li>`));
 
     const cur = find(D.sel);
     if (cur) {
@@ -1464,6 +1490,8 @@
     syncMotion();
     D.office = Office.create($('#office'), { still: () => motion() === 'system' && matchMedia('(prefers-reduced-motion: reduce)').matches, onPick: (key) => select(key, true), onBoard: (teamId) => openBoard(null, teamId), maxHeight: () => Math.max(220, window.innerHeight * 0.42) });
     if (window.HubMock) window.__office = D.office; // mock mode only: lets a test fire an effect by hand
+    $('#tasks').addEventListener('click', (e) => { const b = e.target.closest('[data-clear]'); if (b) clearItems(b.dataset.team, b.dataset.clear); });
+    $('#events-clear').addEventListener('click', (e) => clearItems(e.currentTarget.dataset.team, 'events'));
     $('#agents').addEventListener('click', (e) => {
       const c = e.target.closest('[data-ctl]'), b = e.target.closest('.agent');
       if (c) agentCtl(c.dataset.ctl, c.dataset.key.slice(c.dataset.ctl.length + 1)); // the controls sit beside the row, not inside it

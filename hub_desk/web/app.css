@@ -408,3 +408,12 @@ dialog .actions { display: flex; justify-content: flex-end; gap: 8px; margin-top
 .fd-foot { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin: 10px 16px 14px; padding-top: 10px; border-top: 1px solid #2c3038; }
 
 .warn-text { color: var(--wait, #f5c04e); }
+
+/* task columns and the event list show about three items and scroll inside; "지우기" hides finished ones */
+.col h3 { align-items: center; gap: 6px; }
+.col ul { max-height: 186px; overflow-y: auto; scrollbar-width: thin; scrollbar-color: var(--line-strong) transparent; padding-right: 2px; }
+.events { max-height: 112px; overflow-y: auto; scrollbar-width: thin; scrollbar-color: var(--line-strong) transparent; }
+.h-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.clr { background: none; border: 1px solid var(--line-strong); border-radius: 4px; color: var(--muted); font: inherit; font-size: 11px; font-weight: 500; padding: 1px 6px; cursor: pointer; }
+.clr:hover { color: var(--ink); border-color: var(--ink); }
+.clr:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
