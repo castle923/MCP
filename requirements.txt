@@ -2,5 +2,6 @@
 pywinpty==3.1.2
 starlette==1.10.0
 uvicorn==0.54.0
+websockets==17.4
 mcp==2.3.0
 pytest==9.2.0

@@ -21,9 +21,9 @@ from pathlib import Path
 from starlette.applications import Starlette
 from urllib.parse import quote
 
-from starlette.responses import (FileResponse, HTMLResponse, JSONResponse, RedirectResponse, Response,
-                                 StreamingResponse)
-from starlette.routing import Mount, Route
+from starlette.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse, Response
+from starlette.routing import Mount, Route, WebSocketRoute
+from starlette.websockets import WebSocket, WebSocketDisconnect
 from starlette.staticfiles import StaticFiles
 
 from agent_hub.catalog import (MAIN_GUIDE, RESERVED_ROLES, check_role, job_text, label, load_catalog, load_team,
@@ -830,16 +830,33 @@ async def stop(request):
 
 
 # ---- terminals ----------------------------------------------------------------
-async def out(request):
-    if (bad := guard(request)):
-        return bad
-    pane = find_pane(request)
+async def out(ws: WebSocket):
+    """A terminal's output. A WebSocket, not a streamed HTTP response: the browser keeps at most 6 HTTP connections
+    per server, so seven terminals left no connection for typing or polling (a second team was enough)."""
+    origin = ws.headers.get("origin")
+    if origin not in (f"http://{HOST}:{PORT}", f"http://localhost:{PORT}") \
+            or not secrets.compare_digest(ws.query_params.get("t", ""), TOKEN):
+        return await ws.close(1008)
+    pane = find_pane(ws)
     if not pane:
-        return JSONResponse({"error": "no pane"}, status_code=404)
-    # X-Backlog: bytes of old output replayed first; the page ignores the terminal's own answers until then
-    return StreamingResponse(pane.stream(), media_type="application/octet-stream",
-                             headers={"Cache-Control": "no-store", "X-Accel-Buffering": "no",
-                                      "X-Backlog": str(pane.size)})
+        return await ws.close(4404)
+    await ws.accept()
+    # first message: bytes of old output replayed first; the page ignores the terminal's own answers until then
+    await ws.send_text(str(pane.size))
+
+    async def send():
+        async for chunk in pane.stream():
+            await ws.send_bytes(chunk)
+        await ws.close()  # the process exited
+
+    sender = asyncio.create_task(send())
+    try:
+        while (await ws.receive())["type"] != "websocket.disconnect":
+            pass  # the page sends nothing; this only notices it leaving, which a quiet pane would never show
+    except (RuntimeError, WebSocketDisconnect):
+        pass
+    finally:
+        sender.cancel()
 
 
 async def inp(request):
@@ -930,7 +947,7 @@ app = Starlette(lifespan=lifespan, routes=[
     Route("/api/changes/{team}/{role}/diff", change_diff),
     Route("/api/changes/{team}/{role}/merge", change_merge, methods=["POST"]),
     Route("/api/changes/{team}/{role}/discard", change_discard, methods=["POST"]),
-    Route("/api/out/{team}/{role}", out),
+    WebSocketRoute("/api/out/{team}/{role}", out),
     Route("/api/in/{team}/{role}", inp, methods=["POST"]),
     Route("/api/resize/{team}/{role}", resize, methods=["POST"]),
     Route("/ext/{team}", ext, methods=["POST"]),

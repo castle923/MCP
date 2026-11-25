@@ -37,12 +37,24 @@
     runs: () => call('/api/runs'),
     runDetail: (id) => call(`/api/runs/${u(id)}`),
     resumeRun: (id) => call(`/api/runs/${u(id)}/resume`, { method: 'POST' }),
-    async out(team, role, onChunk, signal, onOpen) {
-      const r = await fetch(`/api/out/${u(team)}/${u(role)}`, { headers: H, signal });
-      if (!r.ok || !r.body) throw new Error(`HTTP ${r.status}`);
-      if (onOpen) onOpen(Number(r.headers.get('X-Backlog')) || 0);
-      const reader = r.body.getReader();
-      for (;;) { const { done, value } = await reader.read(); if (done) return; onChunk(value); }
+    // A WebSocket: streamed fetches held one of the browser's 6 connections each, and a 7th terminal froze the page.
+    // Resolves when the process ends (the server closes with 1000), rejects on any other close.
+    out(team, role, onChunk, signal, onOpen) {
+      return new Promise((resolve, reject) => {
+        const ws = new WebSocket(`ws://${location.host}/api/out/${u(team)}/${u(role)}?t=${u(H['X-Token'])}`);
+        ws.binaryType = 'arraybuffer';
+        let opened = false;
+        const abort = () => ws.close();
+        signal.addEventListener('abort', abort, { once: true });
+        ws.onmessage = (e) => {
+          if (!opened) { opened = true; if (onOpen) onOpen(Number(e.data) || 0); return; } // first message: backlog size
+          onChunk(new Uint8Array(e.data));
+        };
+        ws.onclose = (e) => {
+          signal.removeEventListener('abort', abort);
+          if (e.code === 1000 && opened && !signal.aborted) resolve(); else reject(new Error(`closed ${e.code}`));
+        };
+      });
     },
     scan: (workspace) => postJson('/api/scan', { workspace }),
     folders: () => call('/api/folders'),

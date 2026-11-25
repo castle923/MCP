@@ -29,14 +29,16 @@ def call(path, data=None, token="", raw=False):
 
 
 def screen(team, token):
-    """Terminal output so far, escape sequences removed. The stream stays open, so stop at a short timeout."""
-    req = urllib.request.Request(f"{U}/api/out/{team}/main", headers={"X-Token": token})
+    """Terminal output so far, escape sequences removed. The socket stays open, so stop at a short timeout."""
+    from urllib.parse import quote
+    from websockets.sync.client import connect
     buf = b""
     try:
-        with NO_PROXY.open(req, timeout=3) as r:
-            while chunk := r.read1(65536):
-                buf += chunk
-    except OSError:
+        with connect(f"ws{U[4:]}/api/out/{team}/main?t={quote(token)}", origin=U, proxy=None) as ws:
+            ws.recv(timeout=3)  # backlog size
+            while True:
+                buf += ws.recv(timeout=3)
+    except Exception:  # timeout or close: what arrived is the screen
         pass
     t = re.sub("\x1b\\][^\x07\x1b]*(\x07|\x1b\\\\)", "", buf.decode("utf-8", "replace"))
     return re.sub("\x1b\\[[0-9;?]*[a-zA-Z]", " ", t)

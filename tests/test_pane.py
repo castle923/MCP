@@ -130,6 +130,50 @@ def test_agent_hub_reaches_panes_over_http(tmp_path, monkeypatch):
         srv.shutdown()
 
 
+def test_terminal_output_over_websocket(monkeypatch):
+    """Terminal output is a WebSocket: a browser holds only 6 HTTP connections per server, and streamed responses
+    for a 7th terminal (a second team) left none for typing. Eight sockets at once must all get the output."""
+    import socket
+    import time
+    from contextlib import ExitStack
+    import uvicorn
+    from websockets.sync.client import connect
+    with socket.socket() as s:
+        s.bind(("127.0.0.1", 0))
+        port = s.getsockname()[1]
+    monkeypatch.setattr(server, "PORT", port)
+    loop = asyncio.new_event_loop()
+    srv = uvicorn.Server(uvicorn.Config(server.app, host="127.0.0.1", port=port, log_level="warning", lifespan="off"))
+    threading.Thread(target=loop.run_until_complete, args=(srv.serve(),), daemon=True).start()
+    while not srv.started:
+        time.sleep(0.05)
+    pane = Pane(["cmd", "/q"], 80, 24, loop)
+
+    class Team:
+        panes = {"r": pane}
+    monkeypatch.setitem(server.STATE, "teams", {"t": Team()})
+    url, origin = f"ws://127.0.0.1:{port}/api/out/t/r", f"http://127.0.0.1:{port}"
+    try:
+        pane.write("echo ws-%OS%\r\n")
+        with ExitStack() as stack:
+            socks = [stack.enter_context(connect(f"{url}?t={server.TOKEN}", origin=origin, proxy=None)) for _ in range(8)]
+            for ws in socks:
+                int(ws.recv(timeout=10))  # backlog size comes first
+                out = b""
+                while b"ws-Windows_NT" not in out:
+                    out += ws.recv(timeout=10)
+        for bad in (f"{url}?t=wrong", f"ws://127.0.0.1:{port}/api/out/t/nope?t={server.TOKEN}"):
+            with pytest.raises(Exception):
+                with connect(bad, origin=origin, proxy=None) as ws:
+                    ws.recv(timeout=5)
+        with pytest.raises(Exception):  # another site's page
+            with connect(f"{url}?t={server.TOKEN}", origin="http://evil.test", proxy=None) as ws:
+                ws.recv(timeout=5)
+    finally:
+        pane.close()
+        srv.should_exit = True
+
+
 def test_close_ends_a_grandchild_whose_parent_already_exited():
     """What `taskkill /T` missed: a CLI's MCP server started by a process that is gone."""
     import re
