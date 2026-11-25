@@ -208,6 +208,8 @@ def test_folder_candidates_from_vscode_and_earlier_runs(tmp_path, monkeypatch):
     (state / "run1").mkdir(parents=True)
     (state / "run1" / "config.json").write_text(j.dumps({"workspace": str(other), "project": "예전 일"}), encoding="utf-8")
     monkeypatch.setattr(folders, "CODE", code)
+    from agent_hub import wsl
+    monkeypatch.setattr(wsl, "_distros", [])
     monkeypatch.setattr(folders.tempfile, "gettempdir", lambda: "Z:\\no-temp")  # tmp_path itself is under %TEMP%
     rows = folders.candidates(state)
     by = {r["name"]: r for r in rows}
@@ -215,6 +217,7 @@ def test_folder_candidates_from_vscode_and_earlier_runs(tmp_path, monkeypatch):
     assert rows[0]["git"] == "dev" and rows[0]["harness"] == "AGENTS.md"
     assert by["other"]["project"] == "예전 일" and by["other"]["sources"] == ["hub-desk"]
     assert "gone" not in by  # deleted folders are not offered
+    # no such distro registered here in the test: listed, not usable
     assert [r["ok"] for r in rows if r["name"] in ("x", "y")] == [False, False] and rows[-1]["why"]
     assert folders.uri_path("file:///c%3A/A%20B/%ED%95%9C")[0] == r"C:\A B\한"
 
@@ -237,3 +240,34 @@ def test_resume_arguments(tmp_path, monkeypatch):
     fresh = catalog.build_command(cat, "w3", "codex", "gpt-6-luna", "low", "worker", job="j")
     assert fresh[1] == "-m" and not fresh[-1].startswith("-")  # a fresh worker gets its first message, a resumed one not
     assert x[-1] != fresh[-1]
+
+
+def test_wsl_paths_and_launch():
+    from agent_hub import wsl
+    assert wsl.parse_unc(r"\\wsl.localhost\Ubuntu-24.04\home\user\proj") == ("Ubuntu-24.04", "/home/user/proj")
+    assert wsl.parse_unc(r"\\wsl$\Ubuntu\home") == ("Ubuntu", "/home") and wsl.parse_unc(r"C:\x") is None
+    assert wsl.to_linux(r"C:\Tools\hub-desk\.venv\Scripts\python.exe") == "/mnt/c/Tools/hub-desk/.venv/Scripts/python.exe"
+    assert wsl.to_linux(r"\\wsl.localhost\Ubuntu\home\me\a.txt") == "/home/me/a.txt"
+    assert wsl.to_windows("/mnt/d/data/x.csv") == "D:\\data\\x.csv"
+    assert wsl.to_windows("/home/me/out.html", "Ubuntu") == r"\\wsl.localhost\Ubuntu\home\me\out.html"
+    assert wsl.launch("Ubuntu", "/home/me", ["claude", "-m", "x"])[:6] == ["wsl.exe", "-d", "Ubuntu", "--cd", "/home/me", "--exec"]
+
+
+def test_build_command_for_wsl(tmp_path, monkeypatch):
+    import json as j
+    from agent_hub import catalog
+    monkeypatch.setenv("AGENT_HUB_HOME", str(tmp_path))
+    cat = catalog.load_catalog()
+    w = {"distro": "Ubuntu-24.04", "cwd": "/home/user/proj"}
+    c = catalog.build_command(cat, "b1", "claude", "claude-haiku-5-5", "low", "worker", job="j",
+                              plugin_dirs=[r"C:\plug\x"], claude_args=["--no-chrome", "--add-dir", r"C:\copies"], wsl=w)
+    assert c[:5] == ["wsl.exe", "-d", "Ubuntu-24.04", "--cd", "/home/user/proj"] and c[10] == "claude"
+    assert c[c.index("--mcp-config") + 1].startswith("/mnt/") and c[c.index("--plugin-dir") + 1] == "/mnt/c/plug/x"
+    assert c[c.index("--add-dir") + 1] == "/mnt/c/copies"
+    mcp = j.loads((tmp_path / "agents" / "b1" / "mcp.json").read_text(encoding="utf-8"))["mcpServers"]["agent_hub"]
+    assert mcp["command"].startswith("/mnt/") and mcp["command"].endswith("python.exe")
+    assert mcp["env"]["AGENT_HUB_WSL"] == "Ubuntu-24.04" and "AGENT_HUB_HOME" in mcp["env"]["WSLENV"]
+    hooks = j.loads((tmp_path / "agents" / "b1" / "claude-settings.json").read_text(encoding="utf-8"))
+    assert hooks["hooks"]["Stop"][0]["hooks"][0]["command"].startswith('"/mnt/')
+    x = catalog.build_command(cat, "c1", "codex", "gpt-6-luna", "low", "worker", job="j", wsl=w)
+    assert x[10] == "codex" and any(a.startswith('notify=["/mnt/') for a in x)

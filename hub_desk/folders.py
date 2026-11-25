@@ -1,7 +1,8 @@
-"""Existing project folders to work in: VS Code's open and recent folders, earlier hub-desk runs, a folder dialog.
+r"""Existing project folders to work in: VS Code's open and recent folders, earlier hub-desk runs, a folder dialog.
 
 Only read: VS Code's own files are opened read-only and nothing is written outside this project.
-WSL and remote folders are listed but marked unsupported: the agents run as Windows processes.
+WSL folders are offered as \\wsl.localhost\<distro>\... (agents then run inside that distro with its own CLIs).
+SSH and container folders are listed but marked unsupported.
 """
 from __future__ import annotations
 
@@ -20,12 +21,21 @@ _dialog = threading.Lock()  # one folder dialog at a time
 
 
 def uri_path(uri: str) -> tuple[str | None, str]:
-    """A VS Code folder URI as a local path, or (None, why) for WSL / remote folders."""
+    r"""A VS Code folder URI as a local path (a WSL folder as \\wsl.localhost\<distro>\...), or (None, why)."""
+    from agent_hub import wsl
     u = urlparse(uri)
+    host = unquote(u.netloc)
+    if u.scheme == "vscode-remote" and host.lower().startswith("wsl+"):
+        distro = wsl.distro_name(host[4:])
+        return (wsl.unc(distro, unquote(u.path) or "/"), "") if distro else (None, "등록되지 않은 WSL 배포판")
     if u.scheme != "file":
-        return None, "원격 폴더 (WSL·SSH·컨테이너)"
-    if u.netloc:  # file://wsl.localhost/..., file://server/share
-        return None, "WSL·네트워크 폴더"
+        return None, "원격 폴더 (SSH·컨테이너)"
+    if host.lower() in ("wsl.localhost", "wsl$"):  # file://wsl.localhost/<distro>/...
+        name, _, rest = unquote(u.path).lstrip("/").partition("/")
+        distro = wsl.distro_name(name)
+        return (wsl.unc(distro, "/" + rest), "") if distro else (None, "등록되지 않은 WSL 배포판")
+    if host:  # file://server/share
+        return None, "네트워크 폴더"
     p = unquote(u.path)
     if len(p) > 2 and p[0] == "/" and p[2] == ":":
         p = p[1].upper() + p[2:]  # VS Code writes the drive in lower case
@@ -103,12 +113,17 @@ def candidates(state: Path) -> list[dict]:
             row["ts"] = max(row["ts"], ts)
             row["project"] = row["project"] or project
             return
-        if path and (os.path.normcase(path).startswith(temp) or not Path(path).is_dir()):
+        in_wsl = wsl.parse_unc(path or "")
+        # a WSL folder is not opened here: that would start the distro for every row of the list
+        if path and not in_wsl and (os.path.normcase(path).startswith(temp) or not Path(path).is_dir()):
             return  # gone, or a scratch folder
-        seen[key] = {"path": path or uri, "name": Path(path).name if path else uri.rsplit("/", 1)[-1],
-                     "sources": [source], "ts": ts, "project": project, "ok": bool(path), "why": why}
+        seen[key] = {"path": path or uri, "name": (in_wsl[1].rstrip("/").rsplit("/", 1)[-1] or in_wsl[1]) if in_wsl
+                     else Path(path).name if path else uri.rsplit("/", 1)[-1],
+                     "sources": [source], "ts": ts, "project": project, "ok": bool(path), "why": why,
+                     "wsl": in_wsl[0] if in_wsl else None}
 
     import time
+    from agent_hub import wsl
     now = time.time()
     for uri in _code_open():
         add(*uri_path(uri), "vscode-open", now, uri=uri)
@@ -119,7 +134,7 @@ def candidates(state: Path) -> list[dict]:
         add(ws, "", "hub-desk", ts, project)
     rows = sorted(seen.values(), key=lambda r: (not r["ok"], "vscode-open" not in r["sources"], -r["ts"]))[:MAX]
     for r in rows:
-        if r["ok"]:
+        if r["ok"] and not r["wsl"]:
             r.update(describe(r["path"]))
     return rows
 

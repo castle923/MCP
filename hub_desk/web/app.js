@@ -193,13 +193,13 @@
         <span class="fd-name">${esc(r.name)}${r.project && r.project !== r.name ? ` <small>· ${esc(r.project)}</small>` : ''}</span>
         <span class="fd-path">${esc(r.path)}</span>
         <span class="fd-chips">${r.sources.map((s) => `<span class="chip${s === 'vscode-open' ? ' ok' : ''}">${SRC_KO[s] || esc(s)}</span>`).join('')}
-          ${r.git ? `<span class="chip">git ${esc(r.git)}</span>` : ''}${r.harness ? `<span class="chip">${esc(r.harness)}</span>` : ''}
+          ${r.wsl ? `<span class="chip">WSL ${esc(r.wsl)}</span>` : ''}${r.git ? `<span class="chip">git ${esc(r.git)}</span>` : ''}${r.harness ? `<span class="chip">${esc(r.harness)}</span>` : ''}
           ${r.ok ? '' : `<span class="chip warn">${esc(r.why)} · 지원 안 함</span>`}</span>
       </button></li>`;
     const ok = rows.filter((r) => r.ok), off = rows.filter((r) => !r.ok), idx = (r) => F.list.indexOf(r);
     if (!rows.length) return `<p class="bb-empty">${F.list.length ? '찾는 폴더가 없습니다.' : '최근 폴더 기록이 없습니다. 아래의 찾아보기로 고르세요.'}</p>`;
     return `<ul class="fd-list">${ok.map((r) => item(r, idx(r))).join('')}</ul>
-      ${off.length ? `<details class="fd-off"><summary>WSL·원격 폴더 ${off.length}개 (지원 안 함)</summary>
+      ${off.length ? `<details class="fd-off"><summary>원격 폴더 ${off.length}개 (지원 안 함)</summary>
         <p class="hint">에이전트가 Windows 프로그램으로 실행되어 이 폴더들에서는 일할 수 없습니다.</p>
         <ul class="fd-list">${off.map((r) => item(r, idx(r))).join('')}</ul></details>` : ''}`;
   }
@@ -388,7 +388,7 @@
           <span><b>${title}</b> <span class="hint">${esc(t.detail)}</span>${warn && t.ok && S.cfg.tools[k] ? `<br><span class="hint warn-text">${warn}</span>` : ''}</span></label>`; }).join('')}
         <label class="radio" for="opt-wt">
           <input type="checkbox" id="opt-wt" data-f="wt" ${d.git && S.cfg.worktrees ? 'checked' : ''} ${d.git ? '' : 'disabled'}>
-          <span><b>빌더마다 작업 사본(git worktree)</b> <span class="hint">${d.git ? '빌더는 각자 사본에서 일하고, 대시보드에서 합치기를 눌러야 프로젝트에 반영됩니다 (스테이징만, 커밋은 하지 않음).' : '작업 폴더가 git 저장소가 아니라 쓸 수 없습니다'}</span>${
+          <span><b>빌더마다 작업 사본(git worktree)</b> <span class="hint">${d.git ? '빌더는 각자 사본에서 일하고, 대시보드에서 합치기를 눌러야 프로젝트에 반영됩니다 (스테이징만, 커밋은 하지 않음).' : (/^[\\/]{2}wsl(\.localhost|\$)[\\/]/i.test(S.cfg.workspace) ? 'WSL 폴더에서는 아직 쓸 수 없습니다 (Windows git이 Linux 쪽 저장소를 다루지 못함)' : '작업 폴더가 git 저장소가 아니라 쓸 수 없습니다')}</span>${
             d.git && d.git.dirty > 0 && S.cfg.worktrees ? `<br><span class="hint warn-text" id="wt-dirty">프로젝트에 커밋되지 않은 변경 ${d.git.dirty}개가 있습니다. 작업 사본은 마지막 커밋(브랜치 ${esc(d.git.branch)})에서 시작하므로 이 변경은 사본에 없습니다.</span>` : ''}</span></label>
       </fieldset>
       <section class="tcard hx" aria-labelledby="x-h">

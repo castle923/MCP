@@ -142,13 +142,20 @@ def _toml_list(items: list[str]) -> str:
 def build_command(cat: dict, role: str, cli: str, model: str, effort: str, profile: str,
                   job: str | None = None, plugin_dirs: list[str] | None = None, mcp_extra: dict | None = None,
                   codex_args: list[str] | None = None, claude_args: list[str] | None = None,
-                  resume: str | None = None) -> list[str]:
-    """argv for an interactive agent. Writes per-agent config files under state/agents/<role>/."""
+                  resume: str | None = None, wsl: dict | None = None) -> list[str]:
+    """argv for an interactive agent. Writes per-agent config files under state/agents/<role>/.
+    wsl = {"distro", "cwd"}: the CLI runs inside that distro (hub-desk); hub commands then use /mnt/c paths."""
+    from . import wsl as W
     adir = home() / "agents" / role
     adir.mkdir(parents=True, exist_ok=True)
     spec = cat["cli"][cli]
-    serve = _hub_cmd("serve", "--profile", profile, "--role", role)
+    lp = W.to_linux if wsl else str  # paths as the CLI sees them
+    hub = (lambda *a: [W.to_linux(PY), "-m", "agent_hub", *a]) if wsl else _hub_cmd
+    exe = (lambda name: name) if wsl else _exe  # inside WSL the login shell finds the distro's own CLI
+    serve = hub("serve", "--profile", profile, "--role", role)
     env = {"AGENT_HUB_HOME": str(home()), "PYTHONPATH": str(PKG_ROOT)}
+    if wsl:  # the Windows MCP server started from WSL gets these only through WSLENV
+        env.update(AGENT_HUB_WSL=wsl["distro"], WSLENV=W.wslenv())
     prompt = PROTOCOL.format(role=role) + (f"\n{job}" if job else "")
 
     if cli == "claude":
@@ -157,12 +164,12 @@ def build_command(cat: dict, role: str, cli: str, model: str, effort: str, profi
         mcp.write_text(json.dumps({"mcpServers": {**(mcp_extra or {}), "agent_hub": {
             "command": serve[0], "args": serve[1:], "env": env}}}, indent=1), encoding="utf-8")
         # forward slashes + plain quotes survive both cmd.exe and bash hook runners
-        hook = " ".join('"' + a.replace("\\", "/") + '"' for a in _hub_cmd("hook"))
+        hook = " ".join('"' + a.replace("\\", "/") + '"' for a in hub("hook"))
         settings = adir / "claude-settings.json"  # attached with --settings; project settings untouched
         settings.write_text(json.dumps({"hooks": {ev: [{"hooks": [{"type": "command", "command": hook, "timeout": 10}]}]
                                                    for ev in HOOK_EVENTS}}, indent=1), encoding="utf-8")
-        argv = [_exe(spec["command"]), spec["model_flag"], model, spec["effort_flag"], effort,
-                "--mcp-config", str(mcp), "--settings", str(settings),
+        argv = [exe(spec["command"]), spec["model_flag"], model, spec["effort_flag"], effort,
+                "--mcp-config", lp(str(mcp)), "--settings", lp(str(settings)),
                 # only this hub's server: the user-scope 'agent-hub' entry is another install with its own pane
                 # host, and a second set of hub tools in the same session sends work to the wrong one
                 "--strict-mcp-config",
@@ -170,20 +177,21 @@ def build_command(cat: dict, role: str, cli: str, model: str, effort: str, profi
                 "--allowedTools", ",".join(f"mcp__agent_hub__{t}" for t in
                                            BOARD_TOOLS + (MAIN_TOOLS if profile == "main" else ()))]
         for d in plugin_dirs or []:  # hub-desk: installed plugins the run asked for, this session only
-            argv += ["--plugin-dir", d]
-        argv += claude_args or []  # hub-desk: e.g. --no-chrome
+            argv += ["--plugin-dir", lp(d)]
+        argv += [lp(a) if a[1:3] in (":\\", ":/") else a for a in claude_args or []]  # e.g. --no-chrome, --add-dir
         if resume:  # hub-desk: continue an earlier conversation (needs the same folder as before)
             argv += ["--resume", resume]
-        return argv + ["--append-system-prompt", job if profile == "main" else prompt] if (job or profile != "main") \
-            else argv
+        if job or profile != "main":
+            argv += ["--append-system-prompt", job if profile == "main" else prompt]
+        return W.launch(wsl["distro"], wsl["cwd"], argv) if wsl else argv
 
     if cli == "codex":
-        notify = _hub_cmd("notify", "--role", role)
-        chain = codex_user_notify()
+        notify = hub("notify", "--role", role)
+        chain = None if wsl else codex_user_notify()  # the Windows config's notify is not the distro's
         if chain:
             notify += ["--chain", json.dumps(chain)]
         # hub-desk: `codex resume <id>` takes the same options and continues that session
-        argv = [_exe(spec["command"]), *(["resume", resume] if resume else []), spec["model_flag"], model,
+        argv = [exe(spec["command"]), *(["resume", resume] if resume else []), spec["model_flag"], model,
                 "-c", f'{spec["effort_config"]}="{effort}"',
                 "-c", f"mcp_servers.agent_hub.command={json.dumps(serve[0])}",
                 "-c", f"mcp_servers.agent_hub.args={_toml_list(serve[1:])}",
@@ -198,8 +206,10 @@ def build_command(cat: dict, role: str, cli: str, model: str, effort: str, profi
         argv += ["--disable", "multi_agent"]
         argv += codex_args or []  # hub-desk: browser / PC servers switched off or isolated for this run
         if profile == "main":
-            return argv + (["-c", f"developer_instructions={json.dumps(job)}"] if job else [])
-        return argv if resume else argv + [prompt]  # a resumed worker already had its first message
+            argv += ["-c", f"developer_instructions={json.dumps(job)}"] if job else []
+        elif not resume:  # a resumed worker already had its first message
+            argv += [prompt]
+        return W.launch(wsl["distro"], wsl["cwd"], argv) if wsl else argv
 
     raise ValueError(f"no launcher for cli '{cli}'")
 

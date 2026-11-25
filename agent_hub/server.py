@@ -92,7 +92,8 @@ def build(profile: str, role: str) -> MCPServer:
         summary, a chart, an HTML page or dashboard. Save it as a file inside the project folder first, then
         pass its path (.html .md .txt .csv .json .png .jpg .svg). Call again after updating the file."""
         from pathlib import Path
-        p = Path(path)
+        from .wsl import to_windows
+        p = Path(to_windows(path))  # an agent inside WSL gives a Linux path
         p = (p if p.is_absolute() else Path.cwd() / p).resolve()
         if not p.is_file():
             raise ValueError(f"no such file: {p}. Save the file first, then post its path.")

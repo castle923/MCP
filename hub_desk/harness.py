@@ -191,12 +191,20 @@ def resolve(body: dict, workspace: str, known_file: Path | None = None) -> dict:
     return {"harness": path, "extras": [by_id[i] for i in dict.fromkeys(ids)], "all": found["extras"]}
 
 
-def addon(cfg: dict, cli: str, workspace: str) -> tuple[str, list[str]]:
-    """What one agent gets on top of its job text: (instructions, plugin folders for `claude --plugin-dir`)."""
+def addon(cfg: dict, cli: str, workspace: str, wsl: bool = False) -> tuple[str, list[str]]:
+    """What one agent gets on top of its job text: (instructions, plugin folders for `claude --plugin-dir`).
+    wsl: the agent runs inside WSL, so paths are written as it sees them (/mnt/c/...), and only a project
+    AGENTS.md read by Codex counts as loaded by the CLI itself (the Windows ~/.codex and ~/.claude are not its own)."""
+    from agent_hub.wsl import to_linux
+    fp = to_linux if wsl else str
     lines, dirs = [], []
     if cfg.get("harness"):
-        own = harness_how(cfg["harness"], cli, Path(workspace)) == "native"
-        lines.append(f"Project harness: {cfg['harness']}. "
+        if wsl:
+            own = cli == "codex" and Path(cfg["harness"]).name.lower() == "agents.md" and \
+                str(Path(cfg["harness"]).parent).lower() == str(Path(workspace)).lower()
+        else:
+            own = harness_how(cfg["harness"], cli, Path(workspace)) == "native"
+        lines.append(f"Project harness: {fp(cfg['harness'])}. "
                      + ("Your CLI loads this file by itself. " if own else "Read it now, before your first task. ")
                      + "Follow it for all work in this project. The agent-hub team rules decide how work is delegated.")
     told = []
@@ -206,7 +214,7 @@ def addon(cfg: dict, cli: str, workspace: str) -> tuple[str, list[str]]:
             dirs.append(e["path"])
         elif how == "mention":
             what = "plugin folder, see its skills/ and README" if e["kind"] == "plugin" else "skill"
-            told.append(f"- {e['name']} ({what}): {e['description'][:140]} -> {e['path']}")
+            told.append(f"- {e['name']} ({what}): {e['description'][:140]} -> {fp(e['path'])}")
     if told:
         lines.append("Extra skills enabled for this project (your CLI does not load them by itself). "
                      "When a task matches one, read the file first and follow it:\n" + "\n".join(told))

@@ -31,6 +31,8 @@ from agent_hub.catalog import (MAIN_GUIDE, RESERVED_ROLES, check_role, job_text,
 from agent_hub.context import ctx_text
 from agent_hub.db import Board
 
+from agent_hub import wsl
+
 from . import folders, harness, tools, worktrees
 from .pane import Pane
 
@@ -85,16 +87,20 @@ class Team:
         check_role(role)
         path = self.home / "agents" / role / "pane.json"
         spec = json.loads(path.read_text(encoding="utf-8"))
+        in_wsl = wsl.parse_unc(STATE["workspace"])
         if not spec.get("addon_done"):  # also for agents a main opens later: same harness, same extras
-            text, dirs = harness.addon(STATE["addon"], spec["cli"], STATE["workspace"])
+            if in_wsl:  # the distro's own CLI, in the Linux folder
+                spec["wsl"] = {"distro": in_wsl[0], "cwd": in_wsl[1]}
+            text, dirs = harness.addon(STATE["addon"], spec["cli"], STATE["workspace"], wsl=bool(in_wsl))
             choice = STATE["addon"].get("tools") or {}
             spec.setdefault("name", role)
             spec["job_text"] = "\n".join(filter(None, [
                 spec.get("job_text"), f"Project: {STATE['project']}.", tools.guide(choice, spec["cli"]),
                 RESOURCE_GUIDE + (RESOURCE_MAIN if spec.get("profile") == "main" else ""), BOARD_GUIDE, text]))
             spec["plugin_dirs"], spec["addon_done"] = dirs, True
-            spec["mcp_extra"] = tools.claude_servers(choice) if spec["cli"] == "claude" else {}
-            spec["codex_args"] = tools.codex_overrides(choice) if spec["cli"] == "codex" else []
+            spec["mcp_extra"] = tools.claude_servers(choice, bool(in_wsl)) if spec["cli"] == "claude" else {}
+            # a Codex inside WSL has its own config: switching off servers the Windows config has would break it
+            spec["codex_args"] = tools.codex_overrides(choice) if spec["cli"] == "codex" and not in_wsl else []
             spec["claude_args"] = tools.claude_args(choice) if spec["cli"] == "claude" else []
             wt = STATE.get("git")
             if wt:
@@ -127,8 +133,9 @@ class Team:
             old.close()
         env = {**os.environ, "AGENT_HUB_ROLE": role, "AGENT_HUB_HOME": str(self.home),
                "PYTHONPATH": str(ROOT), "AGENT_HUB_NO_DRAIN": "1"}
+        # a WSL agent's launcher starts in this folder; wsl.exe --cd takes it to the Linux folder
         pane = Pane([sys.executable, "-m", "agent_hub", "pane", str(path)], COLS, ROWS, loop,
-                    cwd=spec.get("cwd") or STATE["workspace"], env=env)
+                    cwd=str(ROOT) if in_wsl else spec.get("cwd") or STATE["workspace"], env=env)
         self.panes[role], self.specs[role] = pane, spec
         return pane
 
@@ -464,7 +471,8 @@ async def begin(body: dict, resume: list[dict] | None = None, note: str = "") ->
         workspace, project, teams = plan(body)
         addon = harness.resolve(body, workspace, KNOWN)
         addon["tools"] = tools.resolve(body)
-        git_info = worktrees.repo_info(workspace) if body.get("worktrees", True) else None
+        # Windows git on a WSL repository is slow and refuses it as owned by another user: no copies there
+        git_info = worktrees.repo_info(workspace) if body.get("worktrees", True) and not wsl.parse_unc(workspace) else None
         addon["worktrees"] = bool(git_info)
     except (ValueError, KeyError, TypeError, AttributeError, json.JSONDecodeError) as e:
         return JSONResponse({"error": str(e)}, status_code=400)

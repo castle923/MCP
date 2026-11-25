@@ -52,7 +52,11 @@ def cmd_pane(args) -> int:
     effort = validate(cat, spec["cli"], spec["model"], spec.get("effort"))
     argv = build_command(cat, spec["role"], spec["cli"], spec["model"], effort, spec["profile"], spec.get("job_text"),
                          spec.get("plugin_dirs"), spec.get("mcp_extra"), spec.get("codex_args"),
-                         spec.get("claude_args"), spec.get("resume"))
+                         spec.get("claude_args"), spec.get("resume"), spec.get("wsl"))
+    if spec.get("wsl"):  # the variables cross into WSL (and back to the hub's Windows commands) only via WSLENV
+        from .wsl import wslenv
+        os.environ["AGENT_HUB_WSL"] = spec["wsl"]["distro"]
+        os.environ["WSLENV"] = wslenv()
     board = Board()
     board.add_agent(spec["role"], spec["cli"], spec["model"], effort, spec["source"], spec.get("job"),
                     context_window(cat, spec["cli"], spec["model"]))

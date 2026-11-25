@@ -51,7 +51,8 @@ def handle(board: Board, role: str, p: dict) -> dict:
     data = {"tool": p.get("tool_name")}
     if ev in ("Stop", "PostToolUse") and p.get("transcript_path"):
         try:
-            used = context.claude_used(p["transcript_path"])
+            from .wsl import to_windows  # a Claude inside WSL reports a Linux path
+            used = context.claude_used(to_windows(p["transcript_path"]))
         except OSError:
             used = None
         if used:

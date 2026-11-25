@@ -85,8 +85,8 @@ def resolve(body: dict) -> dict:
     return {k: bool(t.get(k, True)) and ok[k]["ok"] for k in ("browser", "pc", "ponytail")}
 
 
-def claude_servers(choice: dict) -> dict:
-    """MCP servers to add to a Claude window's own MCP file."""
+def claude_servers(choice: dict, in_wsl: bool = False) -> dict:
+    """MCP servers to add to a Claude window's own MCP file. in_wsl: started from inside WSL."""
     out, cl, cx = {}, _claude_user(), _codex_user()
     if choice.get("browser"):
         pw = dict(cl.get("playwright") or cx.get("playwright") or {})
@@ -96,7 +96,9 @@ def claude_servers(choice: dict) -> dict:
             out["playwright"] = {k: pw[k] for k in ("command", "args", "env") if k in pw}
     if choice.get("pc") and cx.get("agent-desktop"):
         d = cx["agent-desktop"]
-        out["agent-desktop"] = {"command": d["command"], "args": list(d.get("args") or [])}
+        from agent_hub.wsl import to_linux
+        out["agent-desktop"] = {"command": to_linux(d["command"]) if in_wsl else d["command"],
+                                "args": list(d.get("args") or [])}
     return out
 
 
