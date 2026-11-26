@@ -49,7 +49,7 @@ NAME_RULE = {"pattern": r"^[\w-]{1,32}$", "reserved": list(RESERVED_ROLES), "hin
 # Files the agents post are opened by the page from /board/<BOARD_CAP>/...: an iframe cannot send the token
 # header, so the unguessable path is the key. It only reads files inside the run's workspace.
 BOARD_CAP = secrets.token_urlsafe(24)
-KINDS = {**dict.fromkeys((".html", ".htm"), "html"),
+KINDS = {**dict.fromkeys((".html", ".htm"), "html"), **dict.fromkeys((".md", ".markdown"), "markdown"),
          **dict.fromkeys((".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg"), "image")}
 LAST = ROOT / "state" / "last.json"  # the last started choice: the wizard is filled from it after a stop or a reload
 RESOURCE_GUIDE = ("Resources: give back what you use. Before you call complete_task and before you end: stop every "

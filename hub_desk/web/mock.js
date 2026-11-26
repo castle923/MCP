@@ -119,7 +119,7 @@
         posts: !r.posts || i ? [] : [
           { id: 1, ts: r.started_at + 700, role: 'builder', title: '매출 대시보드', note: '', file: 'out/dashboard.html', kind: 'html', url: page('매출 대시보드', [40, 65, 30, 85]) },
           { id: 2, ts: r.started_at + 800, role: 'builder', title: '구조도', note: '', file: 'out/diagram.svg', kind: 'image', url: svg },
-          { id: 3, ts: r.started_at + 900, role: 'reviewer', title: '검토 메모', note: '', file: 'notes/review.md', kind: 'text', url: txt },
+          { id: 3, ts: r.started_at + 900, role: 'reviewer', title: '검토 메모', note: '', file: 'notes/review.md', kind: 'markdown', url: txt },
           { id: 4, ts: r.started_at + 950, role: 'builder', title: '지워진 보고서', note: '', file: 'out/old.html', kind: 'missing', url: null } ] };
     });
     return { id: r.id, project: r.project, workspace: r.workspace, started_at: r.started_at, harness: 'C:\\Users\\user\\.codex\\AGENTS.md', extras: ['gsd-core'],
@@ -150,7 +150,7 @@
       const posts = i ? [] : [
         post(1, who, who, '매출 대시보드', 'html', 'out/dashboard.html', page('매출 대시보드', [40, 65, 30, 85]), '1차 시안입니다', 900),
         post(2, who, who, '구조도', 'image', 'out/diagram.svg', svg, '', 600),
-        post(3, agents[agents.length - 1].role, agents[agents.length - 1].name, '검토 메모', 'text', 'notes/review.md', txt, '마크다운은 글자 그대로 보입니다', 300),
+        post(3, agents[agents.length - 1].role, agents[agents.length - 1].name, '검토 메모', 'markdown', 'notes/review.md', txt, '마크다운은 문서 화면으로 보입니다', 300),
         post(4, who, who, '지워진 보고서', 'missing', 'out/old-report.html', null, '', 120),
       ];
       return { id: `team${i + 1}`, name: t.name || `팀 ${i + 1}`, agents, posts, events: [], tasks: [

@@ -856,7 +856,7 @@
   // ======================= board overlay =======================
   // Agents post results; the server lists them per team. Keys are team id + ":" + post id.
   const B = { open: false, sel: null, shown: null, team: null, known: new Set(), unseen: new Set(), primed: false, opener: null, seq: 0, toastT: 0 };
-  const KIND_KO = { html: '화면', image: '이미지', text: '텍스트', missing: '파일 없음' };
+  const KIND_KO = { html: '화면', markdown: '문서', image: '이미지', text: '텍스트', missing: '파일 없음' };
   const TEXT_CAP = 200000;
   const BOARD_EMPTY = '아직 게시물이 없습니다. 에이전트가 결과를 게시하면 여기에 표시됩니다.';
   const allPosts = () => (D.state?.teams || []).flatMap((t) => (t.posts || []).map((p) => ({ t, p, key: `${t.id}:${p.id}` })));
@@ -931,7 +931,7 @@
     stage.textContent = ''; stage.className = 'bb-stage';
     if (!x) { meta.innerHTML = ''; stage.innerHTML = `<p class="bb-empty">${allPosts().length ? '왼쪽에서 게시물을 고르세요.' : BOARD_EMPTY}</p>`; return; }
     const p = x.p, title = p.title || p.file;
-    meta.innerHTML = `<div class="bb-mt"><h3>${esc(title)}</h3>${(p.kind === 'html' || p.kind === 'text') && p.url ? '<button type="button" class="btn small" id="bb-reload">새로고침</button>' : ''}</div>
+    meta.innerHTML = `<div class="bb-mt"><h3>${esc(title)}</h3>${['html', 'markdown', 'text'].includes(p.kind) && p.url ? '<button type="button" class="btn small" id="bb-reload">새로고침</button>' : ''}</div>
       ${p.note ? `<p class="bb-note">${esc(p.note)}</p>` : ''}
       <p class="bb-by">${esc(x.t.name)} · ${esc(p.name || p.role)} · ${esc(p.file)} · ${hhmmss(p.ts)}</p>`;
     fillStage(stage, p, () => seq === B.seq);
@@ -953,6 +953,16 @@
         if (!live()) return;
         const base = p.url.startsWith('/') ? `<base href="${esc(new URL(p.url, location.href).href)}">` : '';
         f.srcdoc = base + html;
+      }).catch((e) => { if (live()) { f.remove(); stage.innerHTML = `<p class="bb-empty">파일을 불러오지 못했습니다: ${esc(e.message)}</p>`; } });
+    } else if (p.kind === 'markdown' && p.url) {
+      const f = document.createElement('iframe');
+      f.setAttribute('sandbox', ''); // a rendered document needs no scripts at all
+      f.setAttribute('referrerpolicy', 'no-referrer');
+      f.title = title; stage.append(f);
+      fetch(p.url).then((r) => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.text(); }).then((md) => {
+        if (!live()) return;
+        const base = p.url.startsWith('/') ? `<base href="${esc(new URL(p.url, location.href).href)}">` : '';
+        f.srcdoc = `<!doctype html><meta charset="utf-8">${base}<style>${Md.MD_CSS}</style>${Md.mdToHtml(md.slice(0, TEXT_CAP))}`;
       }).catch((e) => { if (live()) { f.remove(); stage.innerHTML = `<p class="bb-empty">파일을 불러오지 못했습니다: ${esc(e.message)}</p>`; } });
     } else if (p.kind === 'image' && p.url) {
       const img = document.createElement('img'); img.alt = title; img.src = p.url; stage.classList.add('dark'); stage.append(img);
